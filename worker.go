@@ -7,6 +7,8 @@ import (
   "io/ioutil"
   "encoding/json"
   "time"
+  "strconv"
+  "bytes"
 )
 
 type Attendance struct {
@@ -14,12 +16,42 @@ type Attendance struct {
     LastSeen  time.Time     `json:"lastSeen"`
 }
 
+type AttendanceDays struct {
+  Username    string        `json:"username"`
+  DaysSince   int64         `json:"daysSince"`
+  AlertLevel  int           `json:"alertLevel"`
+}
+
+func NewAttendanceDays(att Attendance) *AttendanceDays {
+  a := new(AttendanceDays)
+  a.Username = att.Username
+  a.AlertLevel = 0
+  now := time.Now()
+  diff := now.Sub(att.LastSeen)
+  days := diff / (24 * time.Hour)
+  a.DaysSince = int64(days)
+  return a
+}
+
 func main() {
   args := os.Args[1:]
 
-  url := args[0]
+  producerUrl := args[0]
+  consumerUrl := args[1]
 
-  resp, err := http.Get(url)
+  warningLevel, err := strconv.ParseInt(args[2], 10, 64)
+  if (err != nil) {
+    fmt.Println("Could not convert " + args[2] + " to int")
+    os.Exit(1)
+  }
+
+  dangerLevel, err := strconv.ParseInt(args[3], 10, 64)
+  if (err != nil) {
+    fmt.Println("Could not convert " + args[3] + " to int")
+    os.Exit(1)
+  }
+
+  resp, err := http.Get(producerUrl)
   if (err != nil) {
     os.Exit(1)
   }
@@ -36,12 +68,21 @@ func main() {
     panic(err)
   }
 
-  now := time.Now()
+  var dangerZone []AttendanceDays
+
   for _,att := range dat {
-      diff := now.Sub(att.LastSeen)
-      days := diff / (24 * time.Hour)
-      fmt.Println(int64(days))
+      attDays := *NewAttendanceDays(att)
+      if attDays.DaysSince >= warningLevel{
+        attDays.AlertLevel = 1
+
+        if attDays.DaysSince >= dangerLevel {attDays.AlertLevel = 2}
+
+        dangerZone = append(dangerZone, attDays)
+      }
   }
 
-  fmt.Println(time.Now())
+  marshalled, _ := json.Marshal(dangerZone)
+  reader := bytes.NewReader(marshalled)
+  http.Post(consumerUrl, "application/json", reader)
+  fmt.Println(string(marshalled))
 }
