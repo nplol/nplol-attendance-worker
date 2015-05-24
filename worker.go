@@ -36,5 +36,12 @@ func main() {
     panic(err)
   }
 
-  fmt.Println(dat)
+  now := time.Now()
+  for _,att := range dat {
+      diff := now.Sub(att.LastSeen)
+      days := diff / (24 * time.Hour)
+      fmt.Println(int64(days))
+  }
+
+  fmt.Println(time.Now())
 }
